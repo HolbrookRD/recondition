@@ -88,6 +88,9 @@ p{margin:0}
 .pill.rest{background:var(--rest-soft);color:var(--rest)}
 .dot{width:8px;height:8px;border-radius:50%;background:currentColor}
 
+.warn{max-width:560px;margin:0 auto 14px;padding:12px 14px;border-radius:12px;background:var(--rest-soft);color:var(--ink);border:1px solid var(--rest);font-size:14px;line-height:1.4}
+.warn .link{min-height:32px;margin-left:4px}
+
 /* Home */
 .hero{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .hero .big{font-size:52px;line-height:1;font-weight:700;letter-spacing:-.02em;font-family:ui-rounded,-apple-system,system-ui,sans-serif}
@@ -235,6 +238,7 @@ svg.chart text{font-size:10px;fill:var(--muted)}
 
 <div id="app">
   <main id="views">
+    <div id="storage-warn" class="warn" hidden></div>
     <section id="view-home" class="view"></section>
     <section id="view-plan" class="view" hidden></section>
     <section id="view-log" class="view" hidden></section>
@@ -282,7 +286,17 @@ function load(){
     delete st.phase;delete st.anchor;}}catch(e){}
   return out;
 }
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+let STORAGE_OK=true;
+function save(){const j=JSON.stringify(S);try{localStorage.setItem(KEY,j);STORAGE_OK=localStorage.getItem(KEY)===j;}catch(e){STORAGE_OK=false;}paintStorageWarn();return STORAGE_OK;}
+function isStandalone(){try{return window.matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;}catch(e){return false;}}
+function isIOS(){return /iPhone|iPad|iPod/.test(navigator.userAgent);}
+function paintStorageWarn(){
+  const el=document.getElementById('storage-warn');if(!el)return;
+  if(!STORAGE_OK){el.hidden=false;el.innerHTML='<b>Nothing is being saved in this browser.</b> Storage is blocked, usually Private Browsing. Open the app from its Home Screen icon, or a normal Safari tab, and set things up there.';return;}
+  let dismissed=false;try{dismissed=localStorage.getItem(KEY+'.hint')==='1';}catch(e){}
+  if(isIOS()&&!isStandalone()&&!dismissed){el.hidden=false;el.innerHTML='<b>You are in Safari, not the installed app.</b> Safari and the Home Screen icon keep separate data, so what you set here will not show inside the app. Add to Home Screen first, then set it up from the icon. <button class="link small" id="hint-ok">Got it</button>';const b=document.getElementById('hint-ok');if(b)b.onclick=()=>{try{localStorage.setItem(KEY+'.hint','1');}catch(e){}el.hidden=true;};return;}
+  el.hidden=true;
+}
 
 // ---------- dates ----------
 const pad=n=>String(n).padStart(2,'0');
@@ -666,7 +680,7 @@ function renderPlan(){
   h+='<div class="legend cal-legend"><span><i style="background:var(--home)"></i>'+whoCap()+' with you · home</span><span><i style="background:var(--gym)"></i>'+whoCap()+' away · gym</span>'+(painting?'':'<button class="link small" id="cal-swap">Swap</button>')+'</div>';
   if(painting){
     h+='<div class="row between"><span class="small muted">Repeats every</span><div class="choice"><button data-rep="7" aria-pressed="'+(c.repeat===7)+'">7 days</button><button data-rep="14" aria-pressed="'+(c.repeat===14)+'">14 days</button></div></div>';
-  }else if(nums){const sp=patternSplit(nums);h+='<p class="small muted" style="text-align:center"><b>'+sp.you+' days to '+sp.them+'</b> over a '+sp.period+'-day cycle'+(c.anchor?'':' · pick when it starts')+'</p>';}
+  }else if(nums){const sp=patternSplit(nums);h+='<p class="small muted" style="text-align:center"><b>'+sp.you+' days to '+sp.them+'</b> over a '+sp.period+'-day cycle'+(c.anchor?' · saved, starts '+fmt(c.anchor):' · pick when it starts')+'</p>';}
   h+='<p class="small muted">'+(painting?'Switch back to a pattern with a chip above.':'Tap any day to flip it by hand; tap again to put it back. A ring is today, a dot is where the cycle starts.')+'</p>';
   h+='</div>';
   h+='<div class="card"><h2 style="margin-bottom:4px">Settings</h2>';
@@ -685,8 +699,8 @@ function renderPlan(){
   h+='</div>';
   h+='<div class="card stack"><h2>Templates</h2><div><h3>Home · about '+estMinutes('home')+' min</h3><p class="small muted">Warm-up march 2:00 · Bodyweight squats 3×12 · Split squats or step-ups 3×10 each · Calf raises 4×20 · Glute bridges 3×15'+(s.finisher?' · Heart-rate finisher 5:00':'')+' · Cool-down, legs up 2:00</p></div><div><h3>Gym · about '+estMinutes('gym')+' min</h3><p class="small muted">Cardio '+s.cardioMin+' min'+(s.cardioMode==='intervals'?' as intervals':'')+' · Goblet or barbell squat 3×10 · Walking lunges 3×10 each · Romanian deadlift 3×10 · Calf raises 4×20 · Cool-down 3:00</p></div><p class="small muted">Calf raises are in every session. Every session has lower-body strength work. These two rules are fixed.</p></div>';
   v.innerHTML=h;
-  const commit=()=>{save();render();};
-  v.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>{c.mode='pattern';c.pattern=b.dataset.preset;PLAN.typing=false;if(!c.anchor)c.anchor=t;commit();});
+  const commit=(msg)=>{const ok=save();render();if(msg)toast(ok?msg:'Not saved: storage is blocked');};
+  v.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>{c.mode='pattern';c.pattern=b.dataset.preset;PLAN.typing=false;if(!c.anchor)c.anchor=t;commit('Saved: '+c.pattern+' from '+fmt(c.anchor));});
   document.getElementById('chip-type').onclick=()=>{c.mode='pattern';PLAN.typing=true;if(!c.anchor)c.anchor=t;commit();const i=document.getElementById('pat-typed');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}};
   document.getElementById('chip-paint').onclick=()=>{
     if(painting){c.mode='pattern';commit();return;}
@@ -697,11 +711,11 @@ function renderPlan(){
   };
   const typed=document.getElementById('pat-typed');if(typed)typed.oninput=()=>{c.pattern=typed.value;save();};
   if(typed)typed.onchange=()=>{c.pattern=typed.value.trim();commit();};
-  v.querySelectorAll('[data-anchor]').forEach(b=>b.onclick=()=>{const k=b.dataset.anchor;PLAN.dateOpen=k==='date';if(k==='today')c.anchor=t;else if(k==='monday')c.anchor=nextMonday();else if(k==='first')c.anchor=nextFirst();commit();if(k==='date'){const i=document.getElementById('anchor-date');if(i)i.focus();}});
-  const ad=document.getElementById('anchor-date');if(ad)ad.onchange=()=>{if(ad.value){c.anchor=ad.value;PLAN.dateOpen=false;commit();}};
+  v.querySelectorAll('[data-anchor]').forEach(b=>b.onclick=()=>{const k=b.dataset.anchor;PLAN.dateOpen=k==='date';if(k==='today')c.anchor=t;else if(k==='monday')c.anchor=nextMonday();else if(k==='first')c.anchor=nextFirst();commit(k==='date'?null:'Saved: starts '+fmt(c.anchor));if(k==='date'){const i=document.getElementById('anchor-date');if(i)i.focus();}});
+  const ad=document.getElementById('anchor-date');if(ad)ad.onchange=()=>{if(ad.value){c.anchor=ad.value;PLAN.dateOpen=false;commit('Saved: starts '+fmt(c.anchor));}};
   document.getElementById('cal-prev').onclick=()=>{const d=parse(PLAN.month);PLAN.month=iso(new Date(d.getFullYear(),d.getMonth()-1,1));render();};
   document.getElementById('cal-next').onclick=()=>{const d=parse(PLAN.month);PLAN.month=iso(new Date(d.getFullYear(),d.getMonth()+1,1));render();};
-  const swap=document.getElementById('cal-swap');if(swap)swap.onclick=()=>{c.first=c.first==='you'?'them':'you';commit();};
+  const swap=document.getElementById('cal-swap');if(swap)swap.onclick=()=>{c.first=c.first==='you'?'them':'you';commit('Saved: sides swapped');};
   v.querySelectorAll('[data-rep]').forEach(b=>b.onclick=()=>{c.repeat=Number(b.dataset.rep);commit();});
   v.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{const k=b.dataset.step,d=Number(b.dataset.d);const lim={restSec:[15,180,15],gymRestSec:[30,240,15],secPerRep:[2,6,0.5],cardioMin:[10,30,5]}[k];S.settings[k]=Math.min(lim[1],Math.max(lim[0],Math.round((S.settings[k]+d*lim[2])*10)/10));commit();});
   v.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{S.settings.cardioMode=b.dataset.mode;commit();});
@@ -813,7 +827,7 @@ function toast(msg){const el=document.getElementById('toast');el.textContent=msg
 // Installable only where the manifest and worker are actually served (the hosted copy);
 // inside the artifact viewer the probe fails and nothing happens.
 (async()=>{try{if(!('serviceWorker' in navigator))return;const r=await fetch('sw.js',{method:'HEAD',cache:'no-store'});if(r.ok)await navigator.serviceWorker.register('sw.js');}catch(e){}})();
-function start(){render();}
+function start(){render();paintStorageWarn();}
 try{window.claude&&window.claude.hot&&window.claude.hot.snapshot&&window.claude.hot.snapshot(()=>({tab:TAB}));}catch(e){}
 if(window.claude&&window.claude.hot&&window.claude.hot.ready){window.claude.hot.ready(d=>{if(d&&d.tab)TAB=d.tab;start();});}else start();
 })();
