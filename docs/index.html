@@ -164,7 +164,9 @@ svg.chart text{font-size:10px;fill:var(--muted)}
 .cal .d.today{box-shadow:0 0 0 2.5px var(--ink)}
 .cal .d.none.today{box-shadow:inset 0 0 0 1px var(--line),0 0 0 2.5px var(--ink)}
 .cal .d.anchor::after{content:"";position:absolute;left:50%;bottom:-6px;width:4px;height:4px;border-radius:50%;background:var(--ink);transform:translateX(-50%)}
-.cal .d.ov::before{content:"";position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 0 1.5px rgba(0,0,0,.25)}
+.cal .d.ov::before{content:"";position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%;background:#fff;box-shadow:0 0 0 1.5px rgba(0,0,0,.35)}
+.cal .d.sel{outline:3px solid var(--accent);outline-offset:1px}
+.dayrow{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-radius:10px;background:var(--surface-2)}
 .cal .d.done{text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
 .cal.painting .d{border-radius:50%}
 .cal .d:active{transform:scale(.94)}
@@ -274,6 +276,7 @@ svg.chart text{font-size:10px;fill:var(--muted)}
 (function(){
 'use strict';
 const KEY='recondition.v1';
+const BUILD='2026-09-21c';
 const PRESETS=['2-2-3','3-4-4-3','7-7','5-2-2-5','9-5','5-2','11-3'];
 const DEF={settings:{childName:'',physicianContext:'',custody:{mode:'pattern',pattern:'',anchor:null,first:'you',paint:{start:null,days:[]},repeat:14},restSec:30,gymRestSec:60,secPerRep:2.5,weightUnit:'lb',finisher:true,cardioMin:20,cardioMode:'steady',sound:true,vibrate:true,target:3,promotedOn:null},overrides:{},sessions:[],symptoms:{}};
 
@@ -644,7 +647,7 @@ function weekChart(){
   return h+'</svg>';
 }
 
-let PLAN={typing:false,dateOpen:false,month:null};
+let PLAN={typing:false,dateOpen:false,month:null,sel:null};
 function anchorKind(ds){if(!ds)return null;const t=today();if(ds===t)return 'today';if(ds===nextMonday())return 'monday';if(ds===nextFirst())return 'first';return 'date';}
 function nextMonday(){const d=parse(today());const add=((8-d.getDay())%7)||7;d.setDate(d.getDate()+add);return iso(d);}
 function nextFirst(){const d=parse(today());return iso(new Date(d.getFullYear(),d.getMonth()+1,1));}
@@ -662,6 +665,7 @@ function renderPlan(){
     const k=PLAN.dateOpen?'date':anchorKind(c.anchor);
     h+='<div class="startrow"><span class="eyebrow">Starting</span><div class="choice">'+[['today','Today'],['monday','Next Mon'],['first','Next 1st'],['date','Date…']].map(([kk,l])=>'<button data-anchor="'+kk+'" aria-pressed="'+(k===kk)+'">'+l+'</button>').join('')+'</div></div>';
     if(k==='date')h+='<input type="date" class="field" id="anchor-date" aria-label="Starting" value="'+esc(c.anchor||'')+'">';
+    h+='<p class="small muted">The start is the first day of a two-day block that is yours. If the month shows the other home there, tap Swap under it.</p>';
   }
   // the standing month
   const m=parse(PLAN.month);const title=MON[m.getMonth()]+' '+m.getFullYear();
@@ -673,7 +677,7 @@ function renderPlan(){
   for(let d=1;d<=dim;d++){
     const ds=iso(new Date(m.getFullYear(),m.getMonth(),d));const w=withKids(ds);const ov=S.overrides[ds];const kind=custodyReady()||ov?dayKind(ds):null;
     let cls='d';if(kind==='home')cls+=' p1';else if(kind==='gym')cls+=' p2';else cls+=' none';
-    if(ds===t)cls+=' today';if(!painting&&c.anchor===ds)cls+=' anchor';if(ov&&!painting)cls+=' ov';if(sessionsOn(ds).length)cls+=' done';
+    if(ds===t)cls+=' today';if(!painting&&c.anchor===ds)cls+=' anchor';if(ov&&!painting)cls+=' ov';if(!painting&&PLAN.sel===ds)cls+=' sel';if(sessionsOn(ds).length)cls+=' done';
     h+='<button class="'+cls+'" data-day="'+ds+'" aria-label="'+fmt(ds)+(kind?', '+kind:'')+'">'+d+'</button>';
   }
   h+='</div>';
@@ -681,7 +685,12 @@ function renderPlan(){
   if(painting){
     h+='<div class="row between"><span class="small muted">Repeats every</span><div class="choice"><button data-rep="7" aria-pressed="'+(c.repeat===7)+'">7 days</button><button data-rep="14" aria-pressed="'+(c.repeat===14)+'">14 days</button></div></div>';
   }else if(nums){const sp=patternSplit(nums);h+='<p class="small muted" style="text-align:center"><b>'+sp.you+' days to '+sp.them+'</b> over a '+sp.period+'-day cycle'+(c.anchor?' · saved, starts '+fmt(c.anchor):' · pick when it starts')+'</p>';}
-  h+='<p class="small muted">'+(painting?'Switch back to a pattern with a chip above.':'Tap any day to flip it by hand; tap again to put it back. A ring is today, a dot is where the cycle starts.')+'</p>';
+  const ovCount=Object.keys(S.overrides).length;
+  if(!painting&&PLAN.sel){
+    const sd=PLAN.sel;const w=withKids(sd);const k=dayKind(sd);const ov=S.overrides[sd];
+    h+='<div class="dayrow"><div><b>'+fmt(sd)+'</b><span class="small muted"> · '+(k==='gym'?'Gym day':'Home day')+(ov?', set by hand':(w==null?'':(w?', '+who()+' with you':', '+who()+' away')))+'</span></div><div class="row" style="flex-wrap:wrap">'+(ov?'<button class="btn sm" id="sel-reset">Back to the rhythm</button>':'<button class="btn sm" id="sel-flip">Make it a '+(k==='gym'?'home':'gym')+' day</button>')+'<button class="btn sm ghost" id="sel-close">Done</button></div></div>';
+  }
+  h+='<p class="small muted">'+(painting?'Switch back to a pattern with a chip above.':'A ring is today, a dot under a day is where the cycle starts, a white corner dot is a day set by hand. Tap a day to change just that day.')+(ovCount&&!painting?' <button class="link small" id="ov-clear">Clear '+ovCount+' hand-set day'+(ovCount>1?'s':'')+'</button>':'')+'</p>';
   h+='</div>';
   h+='<div class="card"><h2 style="margin-bottom:4px">Settings</h2>';
   h+=setting('Weekly target','Advances only through the gate on the Today screen.','<span class="num" style="font-weight:600">'+s.target+' a week</span>');
@@ -697,7 +706,7 @@ function renderPlan(){
   h+=setting('Sound','Tones at each transition and a 3-2-1 count.',sw('sound'));
   h+=setting('Vibration','Where the phone supports it. iPhones in Safari do not.',sw('vibrate'));
   h+='</div>';
-  h+='<div class="card stack"><h2>Templates</h2><div><h3>Home · about '+estMinutes('home')+' min</h3><p class="small muted">Warm-up march 2:00 · Bodyweight squats 3×12 · Split squats or step-ups 3×10 each · Calf raises 4×20 · Glute bridges 3×15'+(s.finisher?' · Heart-rate finisher 5:00':'')+' · Cool-down, legs up 2:00</p></div><div><h3>Gym · about '+estMinutes('gym')+' min</h3><p class="small muted">Cardio '+s.cardioMin+' min'+(s.cardioMode==='intervals'?' as intervals':'')+' · Goblet or barbell squat 3×10 · Walking lunges 3×10 each · Romanian deadlift 3×10 · Calf raises 4×20 · Cool-down 3:00</p></div><p class="small muted">Calf raises are in every session. Every session has lower-body strength work. These two rules are fixed.</p></div>';
+  h+='<div class="card stack"><h2>Templates</h2><div><h3>Home · about '+estMinutes('home')+' min</h3><p class="small muted">Warm-up march 2:00 · Bodyweight squats 3×12 · Split squats or step-ups 3×10 each · Calf raises 4×20 · Glute bridges 3×15'+(s.finisher?' · Heart-rate finisher 5:00':'')+' · Cool-down, legs up 2:00</p></div><div><h3>Gym · about '+estMinutes('gym')+' min</h3><p class="small muted">Cardio '+s.cardioMin+' min'+(s.cardioMode==='intervals'?' as intervals':'')+' · Goblet or barbell squat 3×10 · Walking lunges 3×10 each · Romanian deadlift 3×10 · Calf raises 4×20 · Cool-down 3:00</p></div><p class="small muted">Calf raises are in every session. Every session has lower-body strength work. These two rules are fixed.</p></div><p class="small muted" style="text-align:center">Version '+BUILD+'</p>';
   v.innerHTML=h;
   const commit=(msg)=>{const ok=save();render();if(msg)toast(ok?msg:'Not saved: storage is blocked');};
   v.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>{c.mode='pattern';c.pattern=b.dataset.preset;PLAN.typing=false;if(!c.anchor)c.anchor=t;commit('Saved: '+c.pattern+' from '+fmt(c.anchor));});
@@ -729,8 +738,12 @@ function renderPlan(){
       if(monthOf(ds)!==c.paint.start){const mm=parse(ds);const n=new Date(mm.getFullYear(),mm.getMonth()+1,0).getDate();const days=[];for(let d=1;d<=n;d++){const x=iso(new Date(mm.getFullYear(),mm.getMonth(),d));days.push(withKids(x)?1:0);}c.paint={start:monthOf(ds),days};}
       const i=daysBetween(c.paint.start,ds);c.paint.days[i]=c.paint.days[i]===1?0:1;commit();return;
     }
-    if(S.overrides[ds])delete S.overrides[ds];else S.overrides[ds]=dayKind(ds)==='gym'?'home':'gym';commit();
+    PLAN.sel=PLAN.sel===ds?null:ds;render();
   });
+  const sf=document.getElementById('sel-flip');if(sf)sf.onclick=()=>{const ds=PLAN.sel;S.overrides[ds]=dayKind(ds)==='gym'?'home':'gym';commit('Saved: '+fmt(ds)+' is a '+S.overrides[ds]+' day');};
+  const sr=document.getElementById('sel-reset');if(sr)sr.onclick=()=>{const ds=PLAN.sel;delete S.overrides[ds];commit('Saved: '+fmt(ds)+' follows the rhythm');};
+  const sc=document.getElementById('sel-close');if(sc)sc.onclick=()=>{PLAN.sel=null;render();};
+  const oc=document.getElementById('ov-clear');if(oc)oc.onclick=()=>{S.overrides={};PLAN.sel=null;commit('Saved: every day follows the rhythm');};
 }
 function setting(label,hint,ctl){return '<div class="setting"><label>'+label+(hint?'<span class="hint">'+hint+'</span>':'')+'</label>'+ctl+'</div>';}
 function stepper(k,txt){return '<div class="stepper"><button data-step="'+k+'" data-d="-1" aria-label="Decrease">−</button><span class="num">'+txt+'</span><button data-step="'+k+'" data-d="1" aria-label="Increase">+</button></div>';}
@@ -809,7 +822,7 @@ function physicianSummary(){
 }
 function renderExport(){
   const v=document.getElementById('view-export');
-  v.innerHTML='<div class="topline"><h1>Export</h1></div><div class="card stack"><p class="muted small">Pick a format, then copy or share it. Everything lives only in this browser; export before clearing site data or changing phones.</p><div class="grid2"><button class="btn" id="ex-w">Workouts CSV</button><button class="btn" id="ex-s">Symptoms CSV</button></div><button class="btn block" id="ex-p">Summary for a physician</button><textarea class="out" id="ex-out" readonly placeholder="Output appears here"></textarea><div class="grid2"><button class="btn primary" id="ex-copy">Copy</button><button class="btn" id="ex-share">Share</button></div></div><div class="card stack"><h2>Backup</h2><p class="muted small">The full data file, for moving to another phone. Paste it into the box and restore to load it.</p><div class="grid2"><button class="btn" id="bk-out">Show data file</button><button class="btn" id="bk-in">Restore from box</button></div></div>';
+  v.innerHTML='<div class="topline"><h1>Export</h1></div><div class="card stack"><p class="muted small">Pick a format, then copy or share it. Everything lives only in this browser; export before clearing site data or changing phones.</p><div class="grid2"><button class="btn" id="ex-w">Workouts CSV</button><button class="btn" id="ex-s">Symptoms CSV</button></div><button class="btn block" id="ex-p">Summary for a physician</button><textarea class="out" id="ex-out" readonly placeholder="Output appears here"></textarea><div class="grid2"><button class="btn primary" id="ex-copy">Copy</button><button class="btn" id="ex-share">Share</button></div></div><div class="card stack"><h2>Backup</h2><p class="muted small">The full data file, for moving to another phone. Paste it into the box and restore to load it.</p><div class="grid2"><button class="btn" id="bk-out">Show data file</button><button class="btn" id="bk-in">Restore from box</button></div></div><p class="small muted" style="text-align:center">Version '+BUILD+'</p>';
   const out=document.getElementById('ex-out');let name='export.txt';
   document.getElementById('ex-w').onclick=()=>{out.value=workoutsCSV();name='recondition-workouts.csv';};
   document.getElementById('ex-s').onclick=()=>{out.value=symptomsCSV();name='recondition-symptoms.csv';};
@@ -826,7 +839,7 @@ function toast(msg){const el=document.getElementById('toast');el.textContent=msg
 // ---------- boot ----------
 // Installable only where the manifest and worker are actually served (the hosted copy);
 // inside the artifact viewer the probe fails and nothing happens.
-(async()=>{try{if(!('serviceWorker' in navigator))return;const r=await fetch('sw.js',{method:'HEAD',cache:'no-store'});if(r.ok)await navigator.serviceWorker.register('sw.js');}catch(e){}})();
+(async()=>{try{if(!('serviceWorker' in navigator))return;const r=await fetch('sw.js',{method:'HEAD',cache:'no-store'});if(!r.ok)return;const reg=await navigator.serviceWorker.register('sw.js');let had=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(had&&!SESSION){location.reload();}had=true;});setTimeout(()=>{try{reg.update();}catch(e){}},3000);}catch(e){}})();
 function start(){render();paintStorageWarn();}
 try{window.claude&&window.claude.hot&&window.claude.hot.snapshot&&window.claude.hot.snapshot(()=>({tab:TAB}));}catch(e){}
 if(window.claude&&window.claude.hot&&window.claude.hot.ready){window.claude.hot.ready(d=>{if(d&&d.tab)TAB=d.tab;start();});}else start();
