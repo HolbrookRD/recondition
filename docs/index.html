@@ -271,7 +271,7 @@ svg.chart text{font-size:10px;fill:var(--muted)}
 'use strict';
 const KEY='recondition.v1';
 const PRESETS=['2-2-3','3-4-4-3','7-7','5-2-2-5','9-5','5-2','11-3'];
-const DEF={settings:{custody:{mode:'pattern',pattern:'',anchor:null,first:'you',paint:{start:null,days:[]},repeat:14},restSec:30,gymRestSec:60,secPerRep:2.5,weightUnit:'lb',finisher:true,cardioMin:20,cardioMode:'steady',sound:true,vibrate:true,target:3,promotedOn:null},overrides:{},sessions:[],symptoms:{}};
+const DEF={settings:{childName:'',physicianContext:'',custody:{mode:'pattern',pattern:'',anchor:null,first:'you',paint:{start:null,days:[]},repeat:14},restSec:30,gymRestSec:60,secPerRep:2.5,weightUnit:'lb',finisher:true,cardioMin:20,cardioMode:'steady',sound:true,vibrate:true,target:3,promotedOn:null},overrides:{},sessions:[],symptoms:{}};
 
 let S=load();
 function load(){
@@ -304,8 +304,10 @@ const mmss=sec=>{sec=Math.max(0,Math.ceil(sec));return Math.floor(sec/60)+':'+pa
 function parsePattern(raw){const t=String(raw==null?'':raw).trim();if(!t)return null;const parts=t.split(/[\s,\-\/|]+/).filter(Boolean);if(parts.length<2)return null;const nums=[];for(const x of parts){if(!/^\d+$/.test(x))return null;const n=parseInt(x,10);if(n<1||n>60)return null;nums.push(n);}if(nums.reduce((a,b)=>a+b,0)>120)return null;return nums;}
 function patternBlocks(nums){return nums.length%2?nums.concat(nums):nums;}
 function patternSplit(nums){const b=patternBlocks(nums);let you=0,them=0;b.forEach((n,i)=>{if(i%2)them+=n;else you+=n;});return {you,them,period:you+them};}
+function who(){const n=(S.settings.childName||'').trim();return n||'the kids';}
+function whoCap(){const w=who();return w.charAt(0).toUpperCase()+w.slice(1);}
 function custodyReady(){const c=S.settings.custody;if(c.mode==='paint')return !!(c.paint.start&&c.paint.days.length);return !!(parsePattern(c.pattern)&&c.anchor);}
-function withCole(d){
+function withKids(d){
   const c=S.settings.custody;if(!c)return null;
   if(c.mode==='paint'){
     if(!c.paint.start||!c.paint.days.length)return null;
@@ -320,7 +322,7 @@ function withCole(d){
 }
 function dayKind(dateStr){
   const o=S.overrides[dateStr];if(o)return o;
-  const w=withCole(dateStr);if(w==null)return 'home';return w?'home':'gym';
+  const w=withKids(dateStr);if(w==null)return 'home';return w?'home':'gym';
 }
 
 // ---------- weeks & ramp ----------
@@ -568,7 +570,7 @@ function render(){
 
 function renderHome(){
   const v=document.getElementById('view-home');const t=today();const s=S.settings;
-  const wk=weekCount(weekStart(t));const streak=streakWeeks();const kind=dayKind(t);const w=withCole(t);
+  const wk=weekCount(weekStart(t));const streak=streakWeeks();const kind=dayKind(t);const w=withKids(t);
   const doneToday=sessionsOn(t).length>0;
   let h='<div class="topline"><h1>Recondition</h1><span class="muted small">'+fmt(t)+'</span></div>';
   h+='<div class="hero"><div class="card"><div class="eyebrow">This week</div><div class="big num">'+wk+'<small>/ '+s.target+'</small></div><div class="small muted">sessions, target '+s.target+' a week</div></div>';
@@ -577,7 +579,7 @@ function renderHome(){
     h+='<div class="card stack notice"><h2>Set the custody rhythm</h2><p class="muted">Pick the pattern and when it starts. The month then shows which days are gym and which are home.</p><button class="btn primary" id="go-plan">Set it up</button></div>';
   }
   h+='<div class="card today stack">';
-  h+='<div class="row between"><span class="kind">'+(kind==='gym'?'Gym day':'Home day')+'</span>'+(w==null&&!S.overrides[t]?'':'<span class="pill '+kind+'"><i class="dot"></i>'+(w==null?'':(w?'Cole with you':'Cole away'))+(S.overrides[t]?(w==null?'Set by hand':' · set by hand'):'')+'</span>')+'</div>';
+  h+='<div class="row between"><span class="kind">'+(kind==='gym'?'Gym day':'Home day')+'</span>'+(w==null&&!S.overrides[t]?'':'<span class="pill '+kind+'"><i class="dot"></i>'+(w==null?'':(w?whoCap()+' with you':whoCap()+' away'))+(S.overrides[t]?(w==null?'Set by hand':' · set by hand'):'')+'</span>')+'</div>';
   h+='<p class="muted small">'+(kind==='gym'?'About '+estMinutes('gym')+' min: '+s.cardioMin+' min cardio, squat, lunges, Romanian deadlift, calf raises.':'About '+estMinutes('home')+' min: squats, split squats, calf raises, glute bridges'+(s.finisher?', a five-minute finisher':'')+'.')+'</p>';
   if(doneToday)h+='<p class="small" style="color:var(--accent);font-weight:600">Done today. Another session is allowed but not needed.</p>';
   h+='<button class="btn primary block" id="start-main">Start '+(kind==='gym'?'gym':'home')+' session</button>';
@@ -639,7 +641,7 @@ function renderPlan(){
   const nums=parsePattern(c.pattern);const painting=c.mode==='paint';
   let h='<div class="topline"><h1>Plan</h1></div>';
   h+='<div class="card stack cust">';
-  h+='<div><h2>How do the days go?</h2><p class="muted small">Pick the closest. The month below follows. Cole\'s days with you are home days.</p></div>';
+  h+='<div><h2>How do the days go?</h2><p class="muted small">Pick the closest. The month below follows. Days '+who()+' are with you are home days.</p></div>';
   h+='<div class="chips">'+PRESETS.map(p=>'<button class="chip'+(!painting&&!PLAN.typing&&c.pattern===p?' on':'')+'" data-preset="'+p+'">'+p+'</button>').join('')+'<button class="chip alt'+(PLAN.typing&&!painting?' on':'')+'" id="chip-type">Type it…</button><button class="chip alt'+(painting?' on':'')+'" id="chip-paint">Pick the days</button></div>';
   if(PLAN.typing&&!painting)h+='<input class="field" id="pat-typed" placeholder="Type it: 2-2-3, 11-3…" autocomplete="off" spellcheck="false" value="'+esc(c.pattern)+'">'+(c.pattern&&!nums?'<p class="small" style="color:var(--danger)">Whole numbers separated by dashes, at least two of them.</p>':'');
   if(!painting){
@@ -650,18 +652,18 @@ function renderPlan(){
   // the standing month
   const m=parse(PLAN.month);const title=MON[m.getMonth()]+' '+m.getFullYear();
   h+='<div class="calhead"><button class="btn sm ghost" id="cal-prev" aria-label="Previous month">‹</button><span class="caltitle">'+title+'</span><button class="btn sm ghost" id="cal-next" aria-label="Next month">›</button></div>';
-  if(painting)h+='<p class="small muted" style="text-align:center">Tap the days Cole is with you. The ones you know are enough; the rest repeats every '+c.repeat+' days.</p>';
+  if(painting)h+='<p class="small muted" style="text-align:center">Tap the days '+who()+' are with you. The ones you know are enough; the rest repeats every '+c.repeat+' days.</p>';
   h+='<div class="cal'+(painting?' painting':'')+'">'+DOW.map(d=>'<span class="dow">'+d[0]+'</span>').join('');
   const first=new Date(m.getFullYear(),m.getMonth(),1);const lead=(first.getDay()+6)%7;const dim=new Date(m.getFullYear(),m.getMonth()+1,0).getDate();
   for(let i=0;i<lead;i++)h+='<span></span>';
   for(let d=1;d<=dim;d++){
-    const ds=iso(new Date(m.getFullYear(),m.getMonth(),d));const w=withCole(ds);const ov=S.overrides[ds];const kind=custodyReady()||ov?dayKind(ds):null;
+    const ds=iso(new Date(m.getFullYear(),m.getMonth(),d));const w=withKids(ds);const ov=S.overrides[ds];const kind=custodyReady()||ov?dayKind(ds):null;
     let cls='d';if(kind==='home')cls+=' p1';else if(kind==='gym')cls+=' p2';else cls+=' none';
     if(ds===t)cls+=' today';if(!painting&&c.anchor===ds)cls+=' anchor';if(ov&&!painting)cls+=' ov';if(sessionsOn(ds).length)cls+=' done';
     h+='<button class="'+cls+'" data-day="'+ds+'" aria-label="'+fmt(ds)+(kind?', '+kind:'')+'">'+d+'</button>';
   }
   h+='</div>';
-  h+='<div class="legend cal-legend"><span><i style="background:var(--home)"></i>Cole with you · home</span><span><i style="background:var(--gym)"></i>Cole away · gym</span>'+(painting?'':'<button class="link small" id="cal-swap">Swap</button>')+'</div>';
+  h+='<div class="legend cal-legend"><span><i style="background:var(--home)"></i>'+whoCap()+' with you · home</span><span><i style="background:var(--gym)"></i>'+whoCap()+' away · gym</span>'+(painting?'':'<button class="link small" id="cal-swap">Swap</button>')+'</div>';
   if(painting){
     h+='<div class="row between"><span class="small muted">Repeats every</span><div class="choice"><button data-rep="7" aria-pressed="'+(c.repeat===7)+'">7 days</button><button data-rep="14" aria-pressed="'+(c.repeat===14)+'">14 days</button></div></div>';
   }else if(nums){const sp=patternSplit(nums);h+='<p class="small muted" style="text-align:center"><b>'+sp.you+' days to '+sp.them+'</b> over a '+sp.period+'-day cycle'+(c.anchor?'':' · pick when it starts')+'</p>';}
@@ -676,6 +678,8 @@ function renderPlan(){
   h+=setting('Cardio style','Intervals: 1 min harder, 2 min easy.','<div class="choice"><button data-mode="steady" aria-pressed="'+(s.cardioMode==='steady')+'">Steady</button><button data-mode="intervals" aria-pressed="'+(s.cardioMode==='intervals')+'">Intervals</button></div>');
   h+=setting('Home finisher','Five minutes of stairs or fast marching at the end.',sw('finisher'));
   h+=setting('Weight unit','',' <div class="choice"><button data-unit="lb" aria-pressed="'+(s.weightUnit==='lb')+'">lb</button><button data-unit="kg" aria-pressed="'+(s.weightUnit==='kg')+'">kg</button></div>');
+  h+=setting('Name shown for custody days','Who is with you on home days. Blank reads as "the kids".','<input class="field" id="set-name" style="max-width:150px" placeholder="the kids" value="'+esc(s.childName||'')+'">');
+  h+='<div class="setting" style="flex-direction:column;align-items:stretch;gap:6px"><label for="set-ctx">Condition note for the physician summary<span class="hint">Appears at the top of the export. Stays on this phone.</span></label><textarea class="field" id="set-ctx" placeholder="Why you are reconditioning, in a sentence or two">'+esc(s.physicianContext||'')+'</textarea></div>';
   h+=setting('Sound','Tones at each transition and a 3-2-1 count.',sw('sound'));
   h+=setting('Vibration','Where the phone supports it. iPhones in Safari do not.',sw('vibrate'));
   h+='</div>';
@@ -688,7 +692,7 @@ function renderPlan(){
     if(painting){c.mode='pattern';commit();return;}
     // seed the month from the current rule so painting starts from what is already known
     const mm=parse(PLAN.month);const n=new Date(mm.getFullYear(),mm.getMonth()+1,0).getDate();
-    const days=[];for(let d=1;d<=n;d++){const ds=iso(new Date(mm.getFullYear(),mm.getMonth(),d));days.push(withCole(ds)?1:0);}
+    const days=[];for(let d=1;d<=n;d++){const ds=iso(new Date(mm.getFullYear(),mm.getMonth(),d));days.push(withKids(ds)?1:0);}
     c.mode='paint';c.paint={start:PLAN.month,days};PLAN.typing=false;commit();
   };
   const typed=document.getElementById('pat-typed');if(typed)typed.oninput=()=>{c.pattern=typed.value;save();};
@@ -699,10 +703,16 @@ function renderPlan(){
   document.getElementById('cal-next').onclick=()=>{const d=parse(PLAN.month);PLAN.month=iso(new Date(d.getFullYear(),d.getMonth()+1,1));render();};
   const swap=document.getElementById('cal-swap');if(swap)swap.onclick=()=>{c.first=c.first==='you'?'them':'you';commit();};
   v.querySelectorAll('[data-rep]').forEach(b=>b.onclick=()=>{c.repeat=Number(b.dataset.rep);commit();});
+  v.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{const k=b.dataset.step,d=Number(b.dataset.d);const lim={restSec:[15,180,15],gymRestSec:[30,240,15],secPerRep:[2,6,0.5],cardioMin:[10,30,5]}[k];S.settings[k]=Math.min(lim[1],Math.max(lim[0],Math.round((S.settings[k]+d*lim[2])*10)/10));commit();});
+  v.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{S.settings.cardioMode=b.dataset.mode;commit();});
+  v.querySelectorAll('[data-unit]').forEach(b=>b.onclick=()=>{S.settings.weightUnit=b.dataset.unit;commit();});
+  v.querySelectorAll('[data-sw]').forEach(b=>b.onclick=()=>{S.settings[b.dataset.sw]=!S.settings[b.dataset.sw];commit();});
+  document.getElementById('set-name').onchange=e=>{S.settings.childName=e.target.value.trim();commit();};
+  document.getElementById('set-ctx').onchange=e=>{S.settings.physicianContext=e.target.value.trim();save();toast('Saved');};
   v.querySelectorAll('.cal [data-day]').forEach(b=>b.onclick=()=>{
     const ds=b.dataset.day;
     if(painting){
-      if(monthOf(ds)!==c.paint.start){const mm=parse(ds);const n=new Date(mm.getFullYear(),mm.getMonth()+1,0).getDate();const days=[];for(let d=1;d<=n;d++){const x=iso(new Date(mm.getFullYear(),mm.getMonth(),d));days.push(withCole(x)?1:0);}c.paint={start:monthOf(ds),days};}
+      if(monthOf(ds)!==c.paint.start){const mm=parse(ds);const n=new Date(mm.getFullYear(),mm.getMonth()+1,0).getDate();const days=[];for(let d=1;d<=n;d++){const x=iso(new Date(mm.getFullYear(),mm.getMonth(),d));days.push(withKids(x)?1:0);}c.paint={start:monthOf(ds),days};}
       const i=daysBetween(c.paint.start,ds);c.paint.days[i]=c.paint.days[i]===1?0:1;commit();return;
     }
     if(S.overrides[ds])delete S.overrides[ds];else S.overrides[ds]=dayKind(ds)==='gym'?'home':'gym';commit();
@@ -752,7 +762,7 @@ function symptomsCSV(){const rows=[['date','physical_rating_1_to_5','note']];Obj
 function physicianSummary(){
   const t=today();const s=S.settings;const u=s.weightUnit;const L=[];
   L.push('EXERCISE RECONDITIONING SUMMARY');L.push('Prepared '+fmtLong(t)+' from a self-kept log.');L.push('');
-  L.push('Context: graded reconditioning for suspected post-infectious dysautonomia with a blood-volume component. Aim: cumulative cardiovascular adaptation over 3 to 6 months (blood volume, stroke volume) plus lower-body strength for venous return via the skeletal muscle pump. Progression is by frequency, not intensity: 3 sessions a week, then 4, then 5, each step only after three consecutive weeks at the previous target.');
+  L.push(s.physicianContext?s.physicianContext:'Graded exercise reconditioning, progression by frequency rather than intensity: 3 sessions a week, then 4, then 5, each step after three consecutive weeks at the previous target.');
   L.push('');
   const first=firstSessionWeek();
   L.push('PROGRAM');L.push('Home (bodyweight, '+estMinutes('home')+' min): squats 3x12, split squats or step-ups 3x10 each side, calf raises 4x20, glute bridges 3x15'+(s.finisher?', 5-min heart-rate finisher':'')+', 2-min supine cool-down with legs elevated.');
